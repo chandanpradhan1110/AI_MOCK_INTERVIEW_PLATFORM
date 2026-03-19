@@ -6,10 +6,10 @@ import json
 import re
 from typing import Dict, Any, Optional
 from loguru import logger
-from openai import OpenAI
+
 
 from utils.prompts import EVALUATOR_SYSTEM, EVALUATOR_PROMPT
-from config import settings
+from utils.llm_client import get_llm_client, get_model_name, supports_json_mode
 
 
 class EvaluatorAgent:
@@ -20,7 +20,9 @@ class EvaluatorAgent:
     """
 
     def __init__(self):
-        self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        self.client = get_llm_client()
+        self.model = get_model_name()
+        self.use_json_mode = supports_json_mode()
         logger.info("EvaluatorAgent initialized")
 
     def evaluate(
@@ -29,17 +31,7 @@ class EvaluatorAgent:
         answer: str,
         role: str,
     ) -> Dict[str, Any]:
-        """
-        Evaluate a candidate's answer.
 
-        Args:
-            question: The interview question asked
-            answer: The candidate's answer
-            role: Target role for context
-
-        Returns:
-            Dict with score, feedback, strengths, improvement, technical_accuracy
-        """
         if not answer or len(answer.strip()) < 5:
             return self._empty_answer_evaluation()
 
@@ -50,30 +42,43 @@ class EvaluatorAgent:
         )
 
         try:
+            # ✅ Step 1: prepare kwargs
+            kwargs = {}
+
+            if self.use_json_mode:
+                kwargs["response_format"] = {"type": "json_object"}
+
+            # ✅ Step 2: API call
             response = self.client.chat.completions.create(
-                model=settings.OPENAI_MODEL,
+                model=self.model,
                 messages=[
                     {"role": "system", "content": EVALUATOR_SYSTEM},
                     {"role": "user", "content": prompt},
                 ],
-                temperature=0.2,  # Low for consistent scoring
+                temperature=0.2,
                 max_tokens=600,
-                response_format={"type": "json_object"},
+                **kwargs   # ✅ inject here
             )
+
             content = response.choices[0].message.content.strip()
+
+            # ✅ Step 3: parse JSON
             evaluation = json.loads(content)
 
-            # Validate and sanitize
+            # ✅ Step 4: validate
             evaluation = self._validate_evaluation(evaluation)
+
             logger.info(
                 f"Evaluated answer — Score: {evaluation['score']}/10 | "
                 f"Q: {question[:50]}..."
             )
+
             return evaluation
 
         except json.JSONDecodeError as e:
             logger.error(f"EvaluatorAgent JSON parse error: {e}")
             return self._parse_from_text(response.choices[0].message.content)
+
         except Exception as e:
             logger.error(f"EvaluatorAgent error: {e}")
             return self._fallback_evaluation(answer)

@@ -6,7 +6,7 @@ import json
 import re
 from typing import Dict, Any, List, Optional
 from loguru import logger
-from openai import OpenAI
+
 
 from utils.prompts import HR_DECISION_SYSTEM, HR_DECISION_PROMPT
 from utils.scoring import (
@@ -16,7 +16,7 @@ from utils.scoring import (
     format_score_breakdown,
     score_to_grade,
 )
-from config import settings
+from utils.llm_client import get_llm_client, get_model_name, supports_json_mode
 
 
 class HRDecisionAgent:
@@ -31,7 +31,9 @@ class HRDecisionAgent:
     """
 
     def __init__(self):
-        self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        self.client = get_llm_client()
+        self.model = get_model_name()
+        self.use_json_mode = supports_json_mode()
         logger.info("HRDecisionAgent initialized")
 
     def generate_report(
@@ -40,17 +42,7 @@ class HRDecisionAgent:
         qa_history: List[Dict[str, Any]],
         resume_summary: str = "No resume provided.",
     ) -> Dict[str, Any]:
-        """
-        Generate the final hiring decision report.
 
-        Args:
-            role: Target role
-            qa_history: Complete list of Q&A dicts with evaluations
-            resume_summary: Brief resume summary
-
-        Returns:
-            Complete HR decision dict
-        """
         if not qa_history:
             return self._empty_interview_report()
 
@@ -69,30 +61,43 @@ class HRDecisionAgent:
         )
 
         try:
+            # ✅ Step 1: prepare kwargs
+            kwargs = {}
+
+            if self.use_json_mode:
+                kwargs["response_format"] = {"type": "json_object"}
+
+            # ✅ Step 2: API call
             response = self.client.chat.completions.create(
-                model=settings.OPENAI_MODEL,
+                model=self.model,   # ✅ changed here
                 messages=[
                     {"role": "system", "content": HR_DECISION_SYSTEM},
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.3,
                 max_tokens=1200,
-                response_format={"type": "json_object"},
+                **kwargs   # ✅ inject conditionally
             )
+
             content = response.choices[0].message.content.strip()
+
+            # ✅ Step 3: parse JSON
             report = json.loads(content)
 
-            # Enrich with computed stats
+            # ✅ Step 4: enrich
             report = self._enrich_report(report, scores, avg_score, qa_history)
+
             logger.info(
                 f"HR Report generated — Decision: {report.get('decision')} | "
                 f"Score: {report.get('overall_score')}/10"
             )
+
             return report
 
         except json.JSONDecodeError as e:
             logger.error(f"HRDecisionAgent JSON parse error: {e}")
             return self._fallback_report(avg_score, scores)
+
         except Exception as e:
             logger.error(f"HRDecisionAgent error: {e}")
             return self._fallback_report(avg_score, scores)

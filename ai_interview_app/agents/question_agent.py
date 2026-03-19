@@ -4,10 +4,10 @@ Generates personalized interview questions based on role, resume, and JD context
 """
 from typing import List, Optional, Dict, Any
 from loguru import logger
-from openai import OpenAI
+
 
 from utils.prompts import QUESTION_GENERATOR_SYSTEM, QUESTION_GENERATOR_PROMPT
-from config import settings
+from utils.llm_client import get_llm_client, get_model_name
 
 
 class QuestionGeneratorAgent:
@@ -22,7 +22,8 @@ class QuestionGeneratorAgent:
     """
 
     def __init__(self):
-        self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        self.client = get_llm_client()
+        self.model = get_model_name()
         logger.info("QuestionGeneratorAgent initialized")
 
     def generate_question(
@@ -67,7 +68,7 @@ class QuestionGeneratorAgent:
 
         try:
             response = self.client.chat.completions.create(
-                model=settings.OPENAI_MODEL,
+                model=self.model,
                 messages=[
                     {"role": "system", "content": QUESTION_GENERATOR_SYSTEM},
                     {"role": "user", "content": prompt},

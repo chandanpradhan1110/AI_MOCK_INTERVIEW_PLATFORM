@@ -6,14 +6,13 @@ Generates contextual follow-up questions based on previous answer quality.
 """
 from typing import Optional
 from loguru import logger
-from openai import OpenAI
 
 from utils.prompts import (
     FOLLOWUP_SYSTEM,
     FOLLOWUP_PROMPT_LOW,
     FOLLOWUP_PROMPT_HIGH,
 )
-from config import settings
+from utils.llm_client import get_llm_client, get_model_name
 
 
 class FollowUpAgent:
@@ -25,7 +24,8 @@ class FollowUpAgent:
     THRESHOLD = 6.0
 
     def __init__(self):
-        self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        self.client = get_llm_client()
+        self.model = get_model_name()
         logger.info("FollowUpAgent initialized")
 
     def generate_followup(
@@ -64,7 +64,7 @@ class FollowUpAgent:
 
         try:
             response = self.client.chat.completions.create(
-                model=settings.OPENAI_MODEL,
+                model=self.model,
                 messages=[
                     {"role": "system", "content": FOLLOWUP_SYSTEM},
                     {"role": "user", "content": prompt},
