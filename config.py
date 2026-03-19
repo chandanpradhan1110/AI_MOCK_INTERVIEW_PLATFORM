@@ -10,8 +10,8 @@ from pathlib import Path
 
 class Settings(BaseSettings):
     # LLM
-    OPENAI_API_KEY: str = Field(..., env="OPENAI_API_KEY")
-    OPENAI_MODEL: str = Field(default="gpt-4o", env="OPENAI_MODEL")
+    GROQ_API_KEY: str = Field(default="", env="GROQ_API_KEY")
+    GROQ_MODEL: str = Field(default="llama-3.3-70b-versatile", env="GROQ_MODEL")
 
     # MongoDB
     MONGODB_URI: str = Field(default="mongodb://localhost:27017", env="MONGODB_URI")
